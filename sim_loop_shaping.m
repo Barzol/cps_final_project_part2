@@ -67,6 +67,7 @@ A = adjacency(G)'; D = diag(sum(A,1)); L = D - A;
 
 % Lp
 Pi = diag([1 0 0]); gamma = 1; Lp = L + gamma*Pi;
+eig(Lp)
 
 %% Loop Shaping Design
 
@@ -87,6 +88,25 @@ Vp = Vp(:,idxp);
 
 %% Controller design
 
+% Specifiche calcolate da Fra :
+% Margine di fase tra 45-60 
+% Margine di ampiezza >= 6 db
+% Larghezza di banda 0.5 - 3 rad/s
+% tempo di assestamento ~25 s
+% sovraelongazione <= 20%
+
+Mf = 45; Ma = 6; Bdw = 3; 
+ts = 1; zeta = 0.20; wn = 4 / (zeta*ts);
+Kp = wn^2; Kd = 2*zeta*wn;
+
+P = tf(1, [1 0 0]);
+K = tf([Kd Kp],1);
+L = K * P;
+
+margin(L)
+[Gm,Pm] = margin(L);
+fprintf('Margine di fase: %.1f deg\n', Pm);
+fprintf('Margine di ampiezza: %.1f dB\n', 20*log10(Gm));
 
 %% Simulation Loop
 
