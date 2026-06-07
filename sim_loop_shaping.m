@@ -13,13 +13,8 @@ M = [ zeros(1,N-1) ; eye(N-1) ];
 
 % type of reference trajectory
 ref_type = 'circular';
-T_sim = 30;
-dt    = 0.005;
-t     = 0:dt:T_sim;
-Nt     = length(t);
-r      = zeros(2,Nt);
-rdot   = zeros(2,Nt);
-rddot  = zeros(2,Nt);
+T_sim = 30; dt = 0.005; t = 0:dt:T_sim; Nt = length(t);
+r = zeros(2,Nt); rdot = zeros(2,Nt); rddot = zeros(2,Nt);
 
 switch ref_type
     case 'constant'
@@ -47,19 +42,18 @@ switch ref_type
 end
 
 % desired trajectory 
-y_star    = zeros(2,3,N);
-yd_star   = zeros(2,3,N);
-ydd_star  = zeros(2,3,N);
+y_star = zeros(2,3,N);
+yd_star = zeros(2,3,N);
+ydd_star = zeros(2,3,N);
 for i = 1:3
     for k = 1:N
-        y_star(:,i,k)   = r(:,k)    + h{i} - h1;
-        yd_star(:,i,k)  = rdot(:,k);
+        y_star(:,i,k) = r(:,k)    + h{i} - h1;
+        yd_star(:,i,k) = rdot(:,k);
         ydd_star(:,i,k) = rddot(:,k);
     end
 end
 
 % initial conditions
-
 offset = [0.5; 0.4];
 X = zeros(4,3,N);
 for i = 1:3

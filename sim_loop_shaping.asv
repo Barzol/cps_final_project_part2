@@ -13,8 +13,7 @@ M = [ zeros(1,N-1) ; eye(N-1) ];
 
 % type of reference trajectory
 ref_type = 'circular';
-T_sim = 30;
-dt    = 0.005;
+T_sim = 30; dt    = 0.005;
 t     = 0:dt:T_sim;
 Nt     = length(t);
 r      = zeros(2,Nt);
@@ -82,8 +81,10 @@ Pi = diag([1 0 0]); gamma = 1; Lp = L + gamma*Pi;
 % extract the eigenvalues in a vector
 rho = diag(Lambdap);
 % sort the eigenvalues, rho(1) = 0 etc... , 
-% idxp contains the indexes of the sorted 
+% idxp contains the indexes of the sorted eigenvalues
 [rho, idxp] = sort(rho);
+% sort Vp columns in the same order of rho, otherwise the
+% eigenvalues and the eigenvectors will be disaligned
 Vp = Vp(:,idxp);
 
 % modal sensitivities
