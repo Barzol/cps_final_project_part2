@@ -1,0 +1,183 @@
+%% Initialization
+
+% triangular formation
+h1 = [0;   0  ]; h2 = [1;   0  ]; h3 = [0.5; sqrt(3)/2];
+h  = {h1, h2, h3};
+
+% offset wtr to node 1
+deltah = [ h2 - h1 ; h3 - h1 ];
+H0 = [ 0 ; deltah ];
+% D1 matrix and M matrix
+N = 4; D1 = [ - ones(N-1,1) , eye(N-1) ];
+M = [ zeros(1,N-1) ; eye(N-1) ];
+
+% type of reference trajectory
+ref_type = 'circular';
+T_sim = 30;
+dt    = 0.005;
+t     = 0:dt:T_sim;
+Nt     = length(t);
+r      = zeros(2,Nt);
+rdot   = zeros(2,Nt);
+rddot  = zeros(2,Nt);
+
+switch ref_type
+    case 'constant'
+        v_ref = [0.3; 0.2];
+        for k = 1:N
+            r(:,k)    = v_ref * t(k);
+            rdot(:,k) = v_ref;
+        end
+
+    case 'circular'
+        Rc = 2;  om = 0.4;
+        for k = 1:N
+            r(:,k)     = Rc * [ cos(om*t(k));  sin(om*t(k))];
+            rdot(:,k)  = Rc*om * [-sin(om*t(k));  cos(om*t(k))];
+            rddot(:,k) = Rc*om^2 * [-cos(om*t(k)); -sin(om*t(k))];
+        end
+
+    case 'sinusoidal'
+        As = 1.5;  oms = 0.5;
+        for k = 1:N
+            r(:,k)     = [As*sin(oms*t(k));  0.3*t(k)];
+            rdot(:,k)  = [As*oms*cos(oms*t(k));  0.3];
+            rddot(:,k) = [-As*oms^2*sin(oms*t(k));  0];
+        end
+end
+
+% desired trajectory 
+y_star    = zeros(2,3,N);
+yd_star   = zeros(2,3,N);
+ydd_star  = zeros(2,3,N);
+for i = 1:3
+    for k = 1:N
+        y_star(:,i,k)   = r(:,k)    + h{i} - h1;
+        yd_star(:,i,k)  = rdot(:,k);
+        ydd_star(:,i,k) = rddot(:,k);
+    end
+end
+
+% initial conditions
+
+offset = [0.5; 0.4];
+X = zeros(4,3,N);
+for i = 1:3
+    p0 = y_star(:,i,1) + offset;
+    X(:,i,1) = [p0(1); 0; p0(2); 0];
+end
+
+% graph
+source = [1,2]; dest = [2,3]; G = digraph(source,dest); 
+A = adjacency(G)'; D = diag(sum(A,1)); L = D - A; 
+
+% Lp
+Pi = diag([1 0 0]); gamma = 1; Lp = L + gamma*Pi;
+
+%% Loop Shaping Design
+
+% Lp diagonalization
+% Vp eigenvectors matrix , Lambdap eigenvalues diagonal matrix
+[Vp, Lambdap] = eig(Lp);
+% extract the eigenvalues in a vector
+rho = diag(Lambdap);
+% sort the eigenvalues, rho(1) = 0 etc... , 
+% idxp contains the indexes of the sorted eigenvalues
+[rho, idxp] = sort(rho);
+% sort Vp columns in the same order of rho, otherwise the
+% eigenvalues and the eigenvectors will be disaligned
+Vp = Vp(:,idxp);
+
+% modal sensitivities
+
+
+%% Controller design
+
+
+%% Simulation Loop
+
+
+%% Formation errors
+
+
+%% Bode plot
+
+try
+    figure('Name','[LS] Open-Loop Bode','Position',[50 50 700 500]);
+    margin(Ls);
+    title('[Loop Shaping]  Open-loop  L(s) = K(s) \cdot G(s)','FontSize',12);
+    grid on;
+catch
+    fprintf('(Bode plot skipped — Control System Toolbox not available)\n');
+end
+
+%% Plots
+colors = {'#1f77b4','#ff7f0e','#2ca02c'};
+lw = 1.6;
+
+% --- Figure: Trajectories ---
+figure('Name','[LS] Trajectories','Position',[50 50 700 600]);
+hold on; grid on; axis equal;
+title(sprintf('[Loop Shaping]  Trajectories — %s reference', ref_type),'FontSize',13);
+xlabel('p_x [m]');  ylabel('p_y [m]');
+for i = 1:3
+    plot(squeeze(Y(1,i,:)), squeeze(Y(2,i,:)), ...
+        'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
+    plot(Y(1,i,1),  Y(2,i,1),  'o','Color',colors{i},'MarkerSize',8,'HandleVisibility','off');
+    plot(Y(1,i,end),Y(2,i,end),'s','Color',colors{i},'MarkerSize',8,'HandleVisibility','off');
+end
+plot(r(1,:),r(2,:),'k--','LineWidth',1,'DisplayName','Reference r(t)');
+tx = [Y(1,1,end) Y(1,2,end) Y(1,3,end) Y(1,1,end)];
+ty = [Y(2,1,end) Y(2,2,end) Y(2,3,end) Y(2,1,end)];
+plot(tx,ty,'k-','LineWidth',2,'HandleVisibility','off');
+legend('Location','best');
+
+% --- Figure: Position tracking ---
+figure('Name','[LS] Position Tracking','Position',[50 50 900 500]);
+subplot(2,1,1); hold on; grid on;
+title('x-position tracking');  xlabel('t [s]');  ylabel('p_x [m]');
+for i = 1:3
+    plot(t,squeeze(Y(1,i,:)),'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
+    plot(t,squeeze(y_star(1,i,:)),'--','Color',colors{i},'LineWidth',1,'HandleVisibility','off');
+end
+legend('Location','best');
+subplot(2,1,2); hold on; grid on;
+title('y-position tracking');  xlabel('t [s]');  ylabel('p_y [m]');
+for i = 1:3
+    plot(t,squeeze(Y(2,i,:)),'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
+    plot(t,squeeze(y_star(2,i,:)),'--','Color',colors{i},'LineWidth',1,'HandleVisibility','off');
+end
+legend('Location','best');
+
+% --- Figure: Formation errors ---
+figure('Name','[LS] Formation Errors','Position',[50 50 900 500]);
+subplot(2,2,1); plot(t,delta2(1,:),'Color',colors{2},'LineWidth',lw); grid on;
+title('\delta_{2,x}');  xlabel('t [s]');  ylabel('[m]');
+subplot(2,2,2); plot(t,delta2(2,:),'Color',colors{2},'LineWidth',lw); grid on;
+title('\delta_{2,y}');  xlabel('t [s]');  ylabel('[m]');
+subplot(2,2,3); plot(t,delta3(1,:),'Color',colors{3},'LineWidth',lw); grid on;
+title('\delta_{3,x}');  xlabel('t [s]');  ylabel('[m]');
+subplot(2,2,4); plot(t,delta3(2,:),'Color',colors{3},'LineWidth',lw); grid on;
+title('\delta_{3,y}');  xlabel('t [s]');  ylabel('[m]');
+sgtitle('[Loop Shaping]  Formation errors  \delta_i = (y_i - y_1) - (h_i - h_1)','FontSize',12);
+
+% --- Figure: Physical inputs ---
+figure('Name','[LS] Physical Inputs','Position',[50 50 900 600]);
+for i = 1:3
+    subplot(3,2,2*i-1);
+    plot(t,squeeze(U(1,i,:)),'Color',colors{i},'LineWidth',lw);
+    grid on;  title(sprintf('Agent %d  —  u_x',i));  xlabel('t [s]');  ylabel('u_x');
+    subplot(3,2,2*i);
+    plot(t,squeeze(U(2,i,:)),'Color',colors{i},'LineWidth',lw);
+    grid on;  title(sprintf('Agent %d  —  u_y',i));  xlabel('t [s]');  ylabel('u_y');
+end
+sgtitle('[Loop Shaping]  Physical inputs u_i','FontSize',12);
+
+% --- Figure: Formation error norms ---
+figure('Name','[LS] Error Norms','Position',[50 50 700 350]);
+hold on; grid on;
+plot(t,vecnorm(delta2),'Color',colors{2},'LineWidth',lw,'DisplayName','||\delta_2||');
+plot(t,vecnorm(delta3),'Color',colors{3},'LineWidth',lw,'DisplayName','||\delta_3||');
+xlabel('t [s]');  ylabel('[m]');
+title('[Loop Shaping]  Formation error norms');
+legend('Location','best');
