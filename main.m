@@ -41,7 +41,7 @@ B   = @(p,v) [             0                         0
                            0                         0
                      0.08*sin(p(2))         1 + 0.20*sin(p(1))^2 ];
 
-a3 = utils( 'buildAbent', phi, B);
+a3 = utils( 'buildAgent', phi, B);
 %__________________________________________________________________________%
 clear phi B
 %% Feedback Linearization

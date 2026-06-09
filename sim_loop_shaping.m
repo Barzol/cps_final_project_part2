@@ -65,6 +65,9 @@ end
 source = [1,2]; dest = [2,3]; G = graph([1,2],[2,3]); 
 %plot(G)
 A = adjacency(G)'; D = diag(sum(A,1)); L = D - A; 
+source = [1,2]; dest = [2,3]; G = graph(source,dest); 
+A = adjacency(G)'; D = diag(sum(A,1)); L = D - A; plot(G)
+
 
 % Lp
 Pi = diag([1 0 0]); gamma = 1; Lp = L + gamma*Pi;
