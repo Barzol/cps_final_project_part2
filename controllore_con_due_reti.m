@@ -4,15 +4,10 @@ clc;
 
 s = tf('s');
 
-% mu1=0.1981;
-% mu2=1.5550;
-% mu3=3.2470;
 
-
-    mu1=0.2679
-    mu2=1.0000
-    mu3=3.7321
-
+% mu1=0.2679;
+% mu2=1.0000;
+% mu3= 3.7321;
 %% Plant dopo feedback linearization
 
 P = 1/s^2;
@@ -34,7 +29,7 @@ legend('\lambda=mu1','\lambda=mu2');
 title('Open-loop non compensato');
 
 %% Frequenza di crossover desiderata
-wc = 1; % rad/s
+wc = 2.6; % rad/s %1.5
 
 [mag1, ph1] = bode(L1, wc);
 [mag2, ph2] = bode(L2, wc);
@@ -44,12 +39,12 @@ ph2 = ph2(:);
 ph3 = ph3(:);
 
 %% Calcolo fase necessaria - DUE RETI ANTICIPATRICI
-PM_des = 70;
+PM_des = 65;
 PM_att = 180 + ph3; % caso peggiore lambda3=3, ph2=-180 -> PM_att=0
 phi_m_tot = PM_des - PM_att; % fase totale da aggiungere
 
 % Margine di sicurezza
-phi_m_tot = phi_m_tot + 10;
+%phi_m_tot = phi_m_tot + 10;
 
 % Con due reti anticipatrici, divido la fase a metà
 phi_m_each = phi_m_tot / 2;
@@ -91,7 +86,7 @@ L1_preLag = lambda1 * Kfin * P;
 
 % --- wc1_target scelto a 0.3 rad/s ---
 % la fase di rho1 li' vale -130 deg => PM = 50 deg, accettabile
-wc1_target = 0.3;%0.25
+wc1_target = 0.8;%0.25
 
 % --- beta: quanto guadagno serve per portare il crossover a wc1_target ---
 % vuoi |N_lag(j*wc1_target) * L1_preLag(j*wc1_target)| = 1
@@ -116,9 +111,11 @@ N_lag = (1 + tau1*s) / (1 + tau2*s);
 % --- controllore finale ---
 %Kg=1.5;
 Kfinal = N_lag * Kfin;
+% Kfinal = Kfin;
+
 
 rho=[lambda1,lambda2,lambda3];
-w0=0.4;
+w0=0.15;
 
 %% Verifica finale con lag
 fprintf('\n=== VERIFICA CON LAG ===\n\n');

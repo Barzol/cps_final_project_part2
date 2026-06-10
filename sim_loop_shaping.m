@@ -115,6 +115,7 @@ rho = diag(mu);
 % sort Vp columns in the same order of rho, otherwise the
 % eigenvalues and the eigenvectors will be disaligned
 Vp = Vp(:,idxp);
+mu_sorted = diag(rho);  % autovalori riordinati
 
 %% Controller design
 
@@ -145,7 +146,7 @@ close all;
 
 S_pin = cell(3,1);
 for i = 1:3
-    S_pin{i} = 1 / (1 + mu(i,i) * K * P);
+    S_pin{i} = 1 / (1 + rho(i)* K * P);
 end
 
 % L1c = lambda1 * K * P;
@@ -178,7 +179,7 @@ om_dist  = 5;                     % stessa frequenza del riferimento
 phi_dist = [0; pi/3; 2*pi/3];     % sfasamenti per caso differenziale
 
 %% Guadagno dei loop modali a omega0
-omega0 = om_dist;
+omega0 = om;
 fprintf('\nGuadagno loop modali a omega0=%.2f rad/s:\n', omega0);
 for i = 1:3
     Li = rho(i) * K * P;
@@ -188,7 +189,7 @@ for i = 1:3
 end
 
 % Verifica attenuazione riferimento circolare senza feedforward
-% w0 = 0.4;  % rad/s moto circolare
+% w0 = 0.;  % rad/s moto circolare
 % S1_at_w0 = abs(evalfr(S1, 1j*w0));
 % S2_at_w0 = abs(evalfr(S2, 1j*w0));
 % fprintf('|S1(jw0)| = %.4f (%.2f dB)\n', S1_at_w0, 20*log10(S1_at_w0));
@@ -294,13 +295,24 @@ for k = 1:Nt-1
     %     pi_i = 1 solo per nodo 1 (pinning), 0 altrimenti
     % ----------------------------------------------------------
     eps = zeros(2, 3);
-    for i = 1:3
-        % contributo dai vicini
-        for j = 1:3
-                eps(:,i) = eps(:,i) -Lp(i,j) * eta(:,j);
-                    % ( (Y(:,j,k) - Y(:,i,k)) - (h{j} - h{i}) );
+for i = 1:3
+    for j = 1:3
+        if A(i,j) == 1   % solo vicini reali
+            eps(:,i) = eps(:,i) + ...
+                (y_meas(:,j) - y_meas(:,i)) - (h{j} - h{i});
         end
     end
+end
+% pinning esplicito solo su agente 1
+eps(:,1) = eps(:,1) - gamma * (y_meas(:,1) - r(:,k));
+    % for i = 1:3
+    %     % contributo dai vicini
+    %     for j = 1:3
+    %             eps(:,i) = eps(:,i) -Lp(i,j) * eta(:,j);
+    %                 % ( (Y(:,j,k) - Y(:,i,k)) - (h{j} - h{i}) );
+    %     end
+    % end
+    % 
         % termine di pinning (solo agente 1)
     %     if i == 1
     %         eps(:,1) = eps(:,1) - gamma * FE(:,1,k);
@@ -363,6 +375,53 @@ end
 
 
 
+
+%% TRACKING ERROR LEADER (agente 1 vs r(t))
+track_err = zeros(1, Nt);
+for k = 1:Nt
+    track_err(k) = norm(Y(:,1,k) - r(:,k));
+end
+
+figure('Name', 'Tracking Error Leader');
+tiledlayout(3,1);
+
+nexttile;
+plot(t, track_err, 'b', 'LineWidth', 1.5);
+ylabel('||y_1 - r(t)|| [m]');
+xlabel('t [s]');
+title('Norma errore tracking agente 1 vs leader');
+grid on;
+
+nexttile;
+hold on;
+plot(t, squeeze(Y(1,1,:)) - r(1,:)', 'b', 'LineWidth', 1.2, 'DisplayName', 'e_x');
+plot(t, squeeze(Y(2,1,:)) - r(2,:)', 'r', 'LineWidth', 1.2, 'DisplayName', 'e_y');
+yline(0, 'k--');
+ylabel('[m]'); xlabel('t [s]');
+title('Errore tracking componenti x e y');
+legend; grid on;
+
+nexttile;
+plot(r(1,:), r(2,:), 'k--', 'LineWidth', 1.5, 'DisplayName', 'r(t) desiderato');
+hold on;
+plot(squeeze(Y(1,1,:)), squeeze(Y(2,1,:)), 'b', 'LineWidth', 1.2, 'DisplayName', 'y_1 reale');
+plot(r(1,1), r(2,1), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g', 'DisplayName', 'start');
+plot(r(1,end), r(2,end), 'rs', 'MarkerSize', 10, 'MarkerFaceColor', 'r', 'DisplayName', 'end');
+axis equal; grid on;
+legend('Location','best');
+title('Traiettoria agente 1 vs riferimento circolare');
+xlabel('x [m]'); ylabel('y [m]');
+
+% Stampa numerica
+k_reg = round(0.8*Nt);
+fprintf('\n=== TRACKING LEADER ===\n');
+fprintf('Errore tracking a regime:\n');
+fprintf('  max  = %.4f m\n', max(track_err(k_reg:end)));
+fprintf('  rms  = %.4f m\n', rms(track_err(k_reg:end)));
+fprintf('  finale = %.4f m\n', track_err(end));
+fprintf('  (atteso < %.4f m per |S1|=%.2f dB)\n', ...
+    abs(evalfr(S_pin{1}, 1j*om)) * 2, ...  % Rc=2
+    20*log10(abs(evalfr(S_pin{1}, 1j*om))));
 
 %% ============================================================
 %  ANALISI FORMATION ERROR
@@ -488,114 +547,6 @@ for s = 1:4
     grid on; axis equal;
     legend('Location','best','FontSize',7)
 end
-
-
-
-
-
-%% Formation errors
-
-
-%% Bode plot
-
-% try
-%     figure('Name','[LS] Open-Loop Bode','Position',[50 50 700 500]);
-%     margin(Ls);
-%     title('[Loop Shaping]  Open-loop  L(s) = K(s) \cdot G(s)','FontSize',12);
-%     grid on;
-% catch
-%     fprintf('(Bode plot skipped — Control System Toolbox not available)\n');
-% end
-% 
-% %% Plots
-% colors = {'#1f77b4','#ff7f0e','#2ca02c'};
-% lw = 1.6;
-% 
-% % --- Figure: Trajectories ---
-% figure('Name','[LS] Trajectories','Position',[50 50 700 600]);
-% hold on; grid on; axis equal;
-% title(sprintf('[Loop Shaping]  Trajectories — %s reference', ref_type),'FontSize',13);
-% xlabel('p_x [m]');  ylabel('p_y [m]');
-% for i = 1:3
-%     plot(squeeze(Y(1,i,:)), squeeze(Y(2,i,:)), ...
-%         'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
-%     plot(Y(1,i,1),  Y(2,i,1),  'o','Color',colors{i},'MarkerSize',8,'HandleVisibility','off');
-%     plot(Y(1,i,end),Y(2,i,end),'s','Color',colors{i},'MarkerSize',8,'HandleVisibility','off');
-% end
-% plot(r(1,:),r(2,:),'k--','LineWidth',1,'DisplayName','Reference r(t)');
-% tx = [Y(1,1,end) Y(1,2,end) Y(1,3,end) Y(1,1,end)];
-% ty = [Y(2,1,end) Y(2,2,end) Y(2,3,end) Y(2,1,end)];
-% plot(tx,ty,'k-','LineWidth',2,'HandleVisibility','off');
-% legend('Location','best');
-% 
-% % --- Figure: Position tracking ---
-% figure('Name','[LS] Position Tracking','Position',[50 50 900 500]);
-% subplot(2,1,1); hold on; grid on;
-% title('x-position tracking');  xlabel('t [s]');  ylabel('p_x [m]');
-% for i = 1:3
-%     plot(t,squeeze(Y(1,i,:)),'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
-%     plot(t,squeeze(y_star(1,i,:)),'--','Color',colors{i},'LineWidth',1,'HandleVisibility','off');
-% end
-% legend('Location','best');
-% subplot(2,1,2); hold on; grid on;
-% title('y-position tracking');  xlabel('t [s]');  ylabel('p_y [m]');
-% for i = 1:3
-%     plot(t,squeeze(Y(2,i,:)),'Color',colors{i},'LineWidth',lw,'DisplayName',sprintf('Agent %d',i));
-%     plot(t,squeeze(y_star(2,i,:)),'--','Color',colors{i},'LineWidth',1,'HandleVisibility','off');
-% end
-% legend('Location','best');
-% 
-% % --- Figure: Formation errors ---
-% figure('Name','[LS] Formation Errors','Position',[50 50 900 500]);
-% subplot(2,2,1); plot(t,delta2(1,:),'Color',colors{2},'LineWidth',lw); grid on;
-% title('\delta_{2,x}');  xlabel('t [s]');  ylabel('[m]');
-% subplot(2,2,2); plot(t,delta2(2,:),'Color',colors{2},'LineWidth',lw); grid on;
-% title('\delta_{2,y}');  xlabel('t [s]');  ylabel('[m]');
-% subplot(2,2,3); plot(t,delta3(1,:),'Color',colors{3},'LineWidth',lw); grid on;
-% title('\delta_{3,x}');  xlabel('t [s]');  ylabel('[m]');
-% subplot(2,2,4); plot(t,delta3(2,:),'Color',colors{3},'LineWidth',lw); grid on;
-% title('\delta_{3,y}');  xlabel('t [s]');  ylabel('[m]');
-% sgtitle('[Loop Shaping]  Formation errors  \delta_i = (y_i - y_1) - (h_i - h_1)','FontSize',12);
-% 
-% % --- Figure: Physical inputs ---
-% figure('Name','[LS] Physical Inputs','Position',[50 50 900 600]);
-% for i = 1:3
-%     subplot(3,2,2*i-1);
-%     plot(t,squeeze(U(1,i,:)),'Color',colors{i},'LineWidth',lw);
-%     grid on;  title(sprintf('Agent %d  —  u_x',i));  xlabel('t [s]');  ylabel('u_x');
-%     subplot(3,2,2*i);
-%     plot(t,squeeze(U(2,i,:)),'Color',colors{i},'LineWidth',lw);
-%     grid on;  title(sprintf('Agent %d  —  u_y',i));  xlabel('t [s]');  ylabel('u_y');
-% end
-% sgtitle('[Loop Shaping]  Physical inputs u_i','FontSize',12);
-% 
-% % --- Figure: Formation error norms ---
-% figure('Name','[LS] Error Norms','Position',[50 50 700 350]);
-% hold on; grid on;
-% plot(t,vecnorm(delta2),'Color',colors{2},'LineWidth',lw,'DisplayName','||\delta_2||');
-% plot(t,vecnorm(delta3),'Color',colors{3},'LineWidth',lw,'DisplayName','||\delta_3||');
-% xlabel('t [s]');  ylabel('[m]');
-% title('[Loop Shaping]  Formation error norms');
-% legend('Location','best');
-
-% Errore relativo agente 2 vs agente 1
-fe_rel_21 = squeeze(sqrt( ...
-    (Y(1,2,:) - Y(1,1,:) - (h{2}(1)-h1(1))).^2 + ...
-    (Y(2,2,:) - Y(2,1,:) - (h{2}(2)-h1(2))).^2 ));
-
-% Errore relativo agente 3 vs agente 1  
-fe_rel_31 = squeeze(sqrt( ...
-    (Y(1,3,:) - Y(1,1,:) - (h{3}(1)-h1(1))).^2 + ...
-    (Y(2,3,:) - Y(2,1,:) - (h{3}(2)-h1(2))).^2 ));
-
-figure('Name','Errore relativo');
-subplot(2,1,1); plot(t, fe_rel_21, 'b', 'LineWidth', 1.2);
-ylabel('||y_2 - y_1 - (h_2-h_1)||'); xlabel('t [s]'); grid on;
-title('Errore relativo agente 2 vs 1');
-
-subplot(2,1,2); plot(t, fe_rel_31, 'r', 'LineWidth', 1.2);
-ylabel('||y_3 - y_1 - (h_3-h_1)||'); xlabel('t [s]'); grid on;
-title('Errore relativo agente 3 vs 1');
 
 
 %% DIAGNOSI CONVERGENZA
