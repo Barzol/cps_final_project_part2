@@ -4,11 +4,17 @@ clc;
 
 s = tf('s');
 
-mu1=0.1981;
-mu2=
-mu3
+% mu1=0.1981;
+% mu2=1.5550;
+% mu3=3.2470;
+
+
+    mu1=0.2679
+    mu2=1.0000
+    mu3=3.7321
 
 %% Plant dopo feedback linearization
+
 P = 1/s^2;
 
 %% Autovalori della Laplaciana
@@ -28,7 +34,7 @@ legend('\lambda=mu1','\lambda=mu2');
 title('Open-loop non compensato');
 
 %% Frequenza di crossover desiderata
-wc = 1; % rad/s
+wc = 2; % rad/s
 
 [mag1, ph1] = bode(L1, wc);
 [mag2, ph2] = bode(L2, wc);
@@ -39,7 +45,7 @@ ph3 = ph3(:);
 
 %% Calcolo fase necessaria - DUE RETI ANTICIPATRICI
 PM_des = 70;
-PM_att = 180 + ph3; % caso peggiore lambda=2, ph2=-180 -> PM_att=0
+PM_att = 180 + ph3; % caso peggiore lambda3=3, ph2=-180 -> PM_att=0
 phi_m_tot = PM_des - PM_att; % fase totale da aggiungere
 
 % Margine di sicurezza
@@ -60,10 +66,10 @@ fprintf('alpha = %.4f\n', alpha);
 fprintf('tau   = %.4f s\n', tau);
 
 % Singola rete anticipatrice
-Klead_single = (1 + s*tau) / (1 + s*alpha*tau);
+Klead_single = (1 + s*tau) / (1 + s*alpha*tau)
 
 % Due reti anticipatrici in cascata
-Klead = Klead_single^2;
+Klead = Klead_single^2
 
 %% Calcolo guadagno K per imporre wc come frequenza di crossover
 K0 = 1;
@@ -72,41 +78,47 @@ L_test = lambda3 * K0 * Klead * P;
 mag_wc = mag_wc(:);
 
 K = 1 / mag_wc;
-Kfinal = K * Klead;
+Kfin = K * Klead
 
 fprintf('Guadagno K = %.4f\n', K);
 
 %INSERIMENTO DELLA
 %RITARDATRICE---------------------------------------------
 
-% --- Step 1: guarda dove cade il crossover attuale di rho1 ---
-L1c_preLag = lambda1 * Kfinal * P;
-[~, ~, ~, wc1_attuale] = margin(L1c_preLag);
-fprintf('\nCrossover attuale rho1 (senza lag): %.4f rad/s\n', wc1_attuale);
+%% Rete ritardatrice tarata sul loop rho1 con le lead
 
-% --- Step 2: scegli il crossover target per rho1 ---
-% Vuoi T_assest < 25s => wc1_target > 4/(zeta*25) con zeta~0.7
-% => wc1_target > 0.23 rad/s, scegli 0.5 per stare comodi
-wc1_target = 0.5; % rad/s
+L1_preLag = lambda1 * Kfin * P;
 
-% --- Step 3: calcola beta ---
-% Il plant e' 1/s^2, quindi il guadagno scala con wc^2
-% => per spostare il crossover da wc1_attuale a wc1_target
-%    serve amplificare il guadagno di un fattore beta = (wc1_target/wc1_attuale)^2
-beta = (wc1_target / wc1_attuale)^2;
-fprintf('Beta calcolato: %.4f\n', beta);
+% --- wc1_target scelto a 0.3 rad/s ---
+% la fase di rho1 li' vale -130 deg => PM = 50 deg, accettabile
+wc1_target = 0.3;%0.25
 
-% --- Step 4: posiziona zero e polo della lag ---
-% Zero una decade sotto wc per non toccare la fase a wc
-z_lag = wc / 10;
-p_lag = z_lag / beta;
-fprintf('Zero lag: %.4f rad/s | Polo lag: %.4f rad/s\n', z_lag, p_lag);
+% --- beta: quanto guadagno serve per portare il crossover a wc1_target ---
+% vuoi |N_lag(j*wc1_target) * L1_preLag(j*wc1_target)| = 1
+% a bassa frequenza N_lag ~ beta, quindi:
+% beta * |L1_preLag(j*wc1_target)| = 1
+mag_L1 = abs(evalfr(L1_preLag, 1j * wc1_target));
+beta = 1 / mag_L1;
+fprintf('|L1_preLag| a wc1_target: %.4f\n', mag_L1);
+fprintf('Beta necessario: %.4f\n', beta);
 
-% --- Step 5: costruisci la rete lag ---
-N_lag = (1 + s/z_lag) / (1 + s/p_lag);
+% --- tau1: zero della lag almeno una decade sotto wc1_target ---
+% cosi' a wc1_target la lag si comporta gia' come guadagno puro beta
+% e non sporca la fase
+tau1 = 10 / wc1_target;
+tau2 = tau1 / beta;
+fprintf('tau1 = %.4f s\n', tau1);
+fprintf('tau2 = %.4f s\n', tau2);
 
-% --- Step 6: controllore finale con lag in cascata ---
-Kfinal = N_lag * Kfinal;
+% --- rete lag ---
+N_lag = (1 + tau1*s) / (1 + tau2*s);
+
+% --- controllore finale ---
+%Kg=1.5;
+Kfinal = N_lag * Kfin;
+
+rho=[lambda1,lambda2,lambda3];
+w0=0.4;
 
 %% Verifica finale con lag
 fprintf('\n=== VERIFICA CON LAG ===\n\n');
@@ -126,9 +138,6 @@ for i = 1:length(rho)
     fprintf('  Sovraelong = %.1f%%   (spec: <= 20%%)\n', info.Overshoot);
     fprintf('  T_assest   = %.2f s   (spec: <= 25 s)\n\n', info.SettlingTime);
 end
-
-
-
 
 
 %% Loop compensati
@@ -189,15 +198,6 @@ legend('\lambda=1','\lambda=2');
 title('Nyquist plot - due reti anticipatrici');
 
 fprintf('PM lambda=2: %.2f deg\n', Pm2);
-
-poles_T1 = pole(T1);
-poles_T2 = pole(T2);
-
-fprintf('Poli T1:\n');
-disp(poles_T1)
-
-fprintf('Poli T2:\n');
-disp(poles_T2)
 
 [~, ph_L2c_at_wc] = bode(L2c, wc);
 [~, ph_L1c_at_wc] = bode(L1c, wc);

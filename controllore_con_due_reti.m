@@ -8,7 +8,13 @@ s = tf('s');
 % mu2=1.5550;
 % mu3=3.2470;
 
+
+    mu1=0.2679
+    mu2=1.0000
+    mu3=3.7321
+
 %% Plant dopo feedback linearization
+
 P = 1/s^2;
 
 %% Autovalori della Laplaciana
@@ -72,7 +78,7 @@ L_test = lambda3 * K0 * Klead * P;
 mag_wc = mag_wc(:);
 
 K = 1 / mag_wc;
-Kfinal = K * Klead
+Kfin = K * Klead
 
 fprintf('Guadagno K = %.4f\n', K);
 
@@ -81,11 +87,11 @@ fprintf('Guadagno K = %.4f\n', K);
 
 %% Rete ritardatrice tarata sul loop rho1 con le lead
 
-L1_preLag = lambda1 * Kfinal * P;
+L1_preLag = lambda1 * Kfin * P;
 
 % --- wc1_target scelto a 0.3 rad/s ---
 % la fase di rho1 li' vale -130 deg => PM = 50 deg, accettabile
-wc1_target = 0.25;
+wc1_target = 0.3;%0.25
 
 % --- beta: quanto guadagno serve per portare il crossover a wc1_target ---
 % vuoi |N_lag(j*wc1_target) * L1_preLag(j*wc1_target)| = 1
@@ -108,7 +114,8 @@ fprintf('tau2 = %.4f s\n', tau2);
 N_lag = (1 + tau1*s) / (1 + tau2*s);
 
 % --- controllore finale ---
-Kfinal = N_lag * Kfinal;
+%Kg=1.5;
+Kfinal = N_lag * Kfin;
 
 rho=[lambda1,lambda2,lambda3];
 w0=0.4;
@@ -133,15 +140,10 @@ for i = 1:length(rho)
 end
 
 
-
-
-
 %% Loop compensati
 L1c = lambda1 * Kfinal * P;
 L2c = lambda2 * Kfinal * P;
 L3c = lambda3 * Kfinal * P;
-
-
 
 %% Bode con margini
 figure;

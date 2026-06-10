@@ -1,19 +1,40 @@
 %% Initialization
 
+% 'on'  => u_tot = u_ff + u_fb, R(s) cancellato dall'errore
+% 'off' => solo feedback, R(s) deve essere attenuato da S_i^pin
+use_feedforward = 'off';
+
+% Switch disturbo sull'uscita 
+% 'none'         => nessun disturbo
+% 'common'       => d1=d2=d3, non deforma la formazione
+% 'differential' => d_i diversi, eccita i modi di formazione
+dist_type = 'none';
+
+% Switch rumore sensore
+use_noise = 'off';             % 'on', 'off'
+sigma     = 0.01;             % deviazione standard [m] — GPS ~1cm
+
+%Parametri di simulazione per il loop
+T_sim = 300; 
+dt = 0.005; 
+t = 0:dt:T_sim; 
+Nt = length(t);
+
 % triangular formation
-h1 = [0;   0  ]; h2 = [1;   0  ]; h3 = [0.5; sqrt(3)/2];
+h1 = [0;   0  ]; 
+h2 = [1;   0  ]; 
+h3 = [0.5; sqrt(3)/2];
 h  = {h1, h2, h3};
 
 % offset wtr to node 1
 deltah = [ h2 - h1 ; h3 - h1 ];
 H0 = [ 0 ; deltah ];
 % D1 matrix and M matrix
-N = 4; D1 = [ - ones(N-1,1) , eye(N-1) ];
+N = 3; D1 = [ - ones(N-1,1) , eye(N-1) ];
 M = [ zeros(1,N-1) ; eye(N-1) ];
 
 % type of reference trajectory
 ref_type = 'circular';
-T_sim = 400; dt = 0.005; t = 0:dt:T_sim; Nt = length(t);
 r = zeros(2,Nt); rdot = zeros(2,Nt); rddot = zeros(2,Nt);
 
 switch ref_type
@@ -25,7 +46,7 @@ switch ref_type
         end
 
     case 'circular'
-        Rc = 2;  om = 0.4;
+        Rc = 2;  om = 0.15;
         for k = 1:Nt
             r(:,k)     = Rc * [ cos(om*t(k));  sin(om*t(k))];
             rdot(:,k)  = Rc*om * [-sin(om*t(k));  cos(om*t(k))];
@@ -33,7 +54,7 @@ switch ref_type
         end
 
     case 'sinusoidal'
-        As = 1.5;  oms = 0.5;
+        As = 1.5;  oms = 0.15;...
         for k = 1:Nt
             r(:,k)     = [As*sin(oms*t(k));  0.3*t(k)];
             rdot(:,k)  = [As*oms*cos(oms*t(k));  0.3];
@@ -42,35 +63,44 @@ switch ref_type
 end
 
 % desired trajectory 
+
 y_star = zeros(2,3,Nt);
-yd_star = zeros(2,3,Nt);
-ydd_star = zeros(2,3,Nt);
-for i = 1:3
-    for k = 1:N
-        y_star(:,i,k) = r(:,k)    + h{i} - h1;
-        yd_star(:,i,k) = rdot(:,k);
-        ydd_star(:,i,k) = rddot(:,k);
-    end
-end
 
 % initial conditions
+% y*_i(t) = r(t) + h_i - h_1
 offset = [0.5; 0.4];
-X = zeros(4,3,N);
+X = zeros(4,3,Nt);
 for i = 1:3
-    p0 = y_star(:,i,1) + offset;
-    X(:,i,1) = [p0(1); 0; p0(2); 0];
+    for k=1:Nt
+        y_star(:,i,k) = r(:,k) + h{i} - h1;
+    end
+    % p0 = y_star(:,i,1) + offset;
+    % X(:,i,1) = [p0(1); 0; p0(2); 0];
 end
 
-% graph
-source = [1,2]; dest = [2,3]; G = graph([1,2],[2,3]); 
+% % GRAFO 
+% source = [1,2];
+% dest = [2,3]; 
+% G = graph([1,2],[2,3]); 
 %plot(G)
-A = adjacency(G)'; D = diag(sum(A,1)); L = D - A; 
-source = [1,2]; dest = [2,3]; G = graph(source,dest); 
-A = adjacency(G)'; D = diag(sum(A,1)); L = D - A; plot(G)
+% A = adjacency(G)'; 
+% D = diag(sum(A,1)); 
+% L = D - A; 
 
+% source = [1,2];
+% dest = [2,3]; 
+% G = graph(source,dest); 
+% A = full(adjacency(G))'; 
+A =   [0 1 1;
+       1 0 0;
+       1 0 0];
+D = diag(sum(A,2));
+L = D - A;
 
-% Lp
-Pi = diag([1 0 0]); gamma = 1; Lp = L + gamma*Pi;
+%PINNING DI L
+Pi = diag([1 0 0]);
+gamma = 1; 
+Lp = L + gamma*Pi;
 
 %% Loop Shaping Design
 
@@ -85,9 +115,6 @@ rho = diag(mu);
 % sort Vp columns in the same order of rho, otherwise the
 % eigenvalues and the eigenvectors will be disaligned
 Vp = Vp(:,idxp);
-
-% modal sensitivities
-
 
 %% Controller design
 
@@ -109,34 +136,74 @@ lambda3 = mu(3,3)
 
 % Il caso critico è rappresentato dall'autovalore più alto quindi lambda2
 
-L1 = lambda1 * P;
-L2 = lambda2 * P;
-L3 = lambda3 * P;
+% L1 = lambda1 * P;
+% L2 = lambda2 * P;
+% L3 = lambda3 * P;
 
 K=controllore_con_due_reti(lambda1,lambda2,lambda3);
 close all;
 
-L1c = lambda1 * K * P;
-L2c = lambda2 * K * P;
-L3c = lambda3 * K * P;
+S_pin = cell(3,1);
+for i = 1:3
+    S_pin{i} = 1 / (1 + mu(i,i) * K * P);
+end
+
+% L1c = lambda1 * K * P;
+% L2c = lambda2 * K * P;
+% L3c = lambda3 * K * P;
+% 
+% 
+% T1 = feedback(L1c, 1);
+% T2 = feedback(L2c, 1);
+% T3 = feedback(L3c, 1);
+% 
+% 
+% S1 = 1 / (1 + L1c);
+% S2 = 1 / (1 + L2c);
+% S3 = 1 / (1 + L3c);
+
+% Verifica |S_i^pin(j*w0)| alla frequenza del riferimento
+w0 = om;  % 0.4 rad/s
+fprintf('\n|S_pin_i(jw0)| alla frequenza del riferimento (w0=%.2f rad/s):\n', w0);
+for i = 1:3
+    val = abs(evalfr(S_pin{i}, 1j*w0));
+    fprintf('  rho_%d = %.4f:  |S| = %.4f (%.2f dB)\n', ...
+        i, rho(i), val, 20*log10(val));
+end
 
 
-T1 = feedback(L1c, 1);
-T2 = feedback(L2c, 1);
-T3 = feedback(L3c, 1);
+% --- Parametri disturbo sull'uscita ---
+A_dist   = 0.1;                    % ampiezza [m]
+om_dist  = 5;                     % stessa frequenza del riferimento
+phi_dist = [0; pi/3; 2*pi/3];     % sfasamenti per caso differenziale
 
-
-S1 = 1 / (1 + L1c);
-S2 = 1 / (1 + L2c);
-S3 = 1 / (1 + L3c);
+%% Guadagno dei loop modali a omega0
+omega0 = om_dist;
+fprintf('\nGuadagno loop modali a omega0=%.2f rad/s:\n', omega0);
+for i = 1:3
+    Li = rho(i) * K * P;
+    L_at_w0 = abs(evalfr(Li, 1j*omega0));
+    fprintf('  rho_%d: |L_i(jw0)| = %.4f (%.2f dB)\n', ...
+        i, L_at_w0, 20*log10(L_at_w0));
+end
 
 % Verifica attenuazione riferimento circolare senza feedforward
-w0 = 0.4;  % rad/s moto circolare
-S1_at_w0 = abs(evalfr(S1, 1j*w0));
-S2_at_w0 = abs(evalfr(S2, 1j*w0));
-fprintf('|S1(jw0)| = %.4f (%.2f dB)\n', S1_at_w0, 20*log10(S1_at_w0));
-fprintf('|S2(jw0)| = %.4f (%.2f dB)\n', S2_at_w0, 20*log10(S2_at_w0));
+% w0 = 0.4;  % rad/s moto circolare
+% S1_at_w0 = abs(evalfr(S1, 1j*w0));
+% S2_at_w0 = abs(evalfr(S2, 1j*w0));
+% fprintf('|S1(jw0)| = %.4f (%.2f dB)\n', S1_at_w0, 20*log10(S1_at_w0));
+% fprintf('|S2(jw0)| = %.4f (%.2f dB)\n', S2_at_w0, 20*log10(S2_at_w0));
 
+
+
+%% --- Condizioni iniziali ---
+% Agenti partono con offset rispetto alla posizione desiderata
+offset = [0.5; 0.4];
+X = zeros(4, 3, Nt);   % stato [px; vx; py; vy] per ogni agente
+for i = 1:3
+    p0          = y_star(:,i,1) + offset;
+    X(:,i,1)    = [p0(1); 0; p0(2); 0];
+end
 %% Simulation Loop
 % ============================================================
 %  SIMULATION LOOP
@@ -147,7 +214,8 @@ fprintf('|S2(jw0)| = %.4f (%.2f dB)\n', S2_at_w0, 20*log10(S2_at_w0));
 
 % --- Stato interno del controllore K(s) per ogni agente e asse ---
 % K e' dinamico => serve memoria tra i passi
-Kss = ss(K);
+Kd  = c2d(ss(K), dt, 'tustin');
+Kss = Kd;
 nk  = size(Kss.A, 1);          % ordine del controllore
 xk  = zeros(nk, 3, 2);         % (ordine_K, n_agenti=3, n_assi=2)
 
@@ -166,17 +234,61 @@ end
 % ============================================================
 for k = 1:Nt-1
 
+    %  DISTURBO SULL'USCITA 
+    %  y_i misurata = y_i + d_i
     % ----------------------------------------------------------
-    %  1. FORMATION ERROR
-    %     f_i(t) = y_i(t) - r(t) - (h_i - h_1)
-    %     quanto ogni agente dista dalla sua posizione desiderata
-    % ----------------------------------------------------------
-    for i = 1:3
-        FE(:, i, k) = Y(:, i, k) - r(:, k) - (h{i} - h1);
+    switch dist_type
+        case 'none'
+            y_meas = Y(:,:,k);
+
+        case 'common'
+            % d_1 = d_2 = d_3 => eccita solo modo consenso
+            % => non deforma la formazione (D1*1_N = 0, slide 28)
+            d_c = A_dist * sin(om_dist * t(k));
+            y_meas = Y(:,:,k) + d_c * ones(2,3);
+
+        % case 'differential'
+        %     % d_i diversi => eccita i modi di formazione
+        %     % => deve essere attenuato da |S_i^pin(jw)| (slide 30)
+        %     y_meas = Y(:,:,k);
+        %     for i = 1:3
+        %         d_i = A_dist * sin(om_dist * t(k) + phi_dist(i));
+        %         y_meas(:,i) = y_meas(:,i) + [d_i; d_i];
+        %     end
+
+            case 'differential'
+                y_meas = Y(:,:,k);
+                for i = 1:3
+                % disturbo diverso su x e y per ogni agente
+                d_x = A_dist * sin(om_dist * t(k) + phi_dist(i));
+                d_y = A_dist * sin(om_dist * t(k) + phi_dist(i) + pi/2);
+                y_meas(:,i) = y_meas(:,i) + [d_x; d_y];
+                end
+    end
+
+    % 2. Rumore sensore gaussiano (indipendente dal disturbo)
+    switch use_noise
+        case 'on'
+            y_meas = y_meas + sigma * randn(2,3);
+        % case 'off': nessuna aggiunta
     end
 
     % ----------------------------------------------------------
-    %  2. ERRORE DI VICINATO PINNATO
+    %  1. ERRORE DI TRACKING LOCALE
+    %     f_i(t) = y_i(t) - r(t) - (h_i - h_1)
+    % ----------------------------------------------------------
+    eta=zeros(2,3);
+    for i = 1:3
+        eta(:,i) = y_meas(:,i) - r(:, k) - (h{i} - h1);
+    end
+
+    % Formation error (senza disturbo, per monitoraggio)
+    for i = 1:3
+        FE(:,i,k) = Y(:,i,k) - r(:,k) - (h{i} - h1);
+    end
+
+    % ----------------------------------------------------------
+    %  2. ERRORE PINNATO
     %     eps_i = sum_j a_ij [(y_j - y_i) - (h_j - h_i)]
     %             - gamma * pi_i * f_i(t)
     %     pi_i = 1 solo per nodo 1 (pinning), 0 altrimenti
@@ -185,40 +297,46 @@ for k = 1:Nt-1
     for i = 1:3
         % contributo dai vicini
         for j = 1:3
-            if A(j,i) > 0
-                eps(:,i) = eps(:,i) + A(j,i) * ...
-                    ( (Y(:,j,k) - Y(:,i,k)) - (h{j} - h{i}) );
-            end
-        end
-        % termine di pinning (solo agente 1)
-        if i == 1
-            eps(:,1) = eps(:,1) - gamma * FE(:,1,k);
+                eps(:,i) = eps(:,i) -Lp(i,j) * eta(:,j);
+                    % ( (Y(:,j,k) - Y(:,i,k)) - (h{j} - h{i}) );
         end
     end
+        % termine di pinning (solo agente 1)
+    %     if i == 1
+    %         eps(:,1) = eps(:,1) - gamma * FE(:,1,k);
+    %     end
+    % end
 
     % ----------------------------------------------------------
-    %  3. CONTROLLORE K(s) — Euler forward su spazio di stato
+    %  3. CONTROLLORE K(s) 
     %     Per ogni agente i e ogni asse (x=1, y=2):
     %       nu  = C*xk + D*eps
     %       xk' = A*xk + B*eps
     % ----------------------------------------------------------
-    for i = 1:3
-        for ax = 1:2
-            e_in          = eps(ax, i);
-            NU(ax, i, k)  = Kss.C * xk(:,i,ax) + Kss.D * e_in;
-            xk(:,i,ax)    = xk(:,i,ax) + dt * (Kss.A * xk(:,i,ax) + Kss.B * e_in);
-        end
+for i = 1:3
+    for ax = 1:2
+        e_in         = eps(ax, i);
+        % uscita: y = C*x + D*u
+        NU(ax, i, k) = Kss.C * xk(:,i,ax) + Kss.D * e_in;
+        % aggiornamento stato discreto: x[k+1] = A*x[k] + B*u[k]
+        xk(:,i,ax)   = Kss.A * xk(:,i,ax) + Kss.B * e_in;
     end
-
+end
     % ----------------------------------------------------------
     %  4. FEEDFORWARD
-    %     Cancella il contributo dell'accelerazione di riferimento
-    %     nu_tot = nu_feedback + r_ddot(t)
+    %  Con FF: u_tot = u_ff + u_fb
+    %          u_ff = 1_N * U_ff,r  tale che Gp*1_N*U_ff,r = 1_N*R(s)
+    %          => per Gp = 1/s^2  =>  u_ff,r = r_ddot(t)
+    %  Senza FF: solo u_fb, R(s) entra nella dinamica dell'errore
     % ----------------------------------------------------------
-    for i = 1:3
-        NU(:, i, k) = NU(:, i, k) + rddot(:, k);
+    switch use_feedforward
+        case 'on'
+            for i = 1:3
+                NU(:,i,k) = NU(:,i,k) + rddot(:,k);
+            end
+        case 'off'
+            % nessuna aggiunta — R(s) deve essere attenuato da S_i^pin
     end
-
     % ----------------------------------------------------------
     %  5. INTEGRAZIONE — doppio integratore (post FL)
     %     px' = vx       vx' = nu_x
@@ -244,28 +362,6 @@ for i = 1:3
 end
 
 
-%% DIAGNOSTICA: CI esatte, guarda eps al k=1
-Y_test = zeros(2,3);
-for i = 1:3
-    Y_test(:,i) = y_star(:,i,1);   % posizione esattamente desiderata
-end
-
-eps_test = zeros(2,3);
-for i = 1:3
-    for j = 1:3
-        if A(j,i) > 0
-            eps_test(:,i) = eps_test(:,i) + A(j,i) * ...
-                ( (Y_test(:,j) - Y_test(:,i)) - (h{j} - h{i}) );
-        end
-    end
-    if i == 1
-        eps_test(:,1) = eps_test(:,1) - gamma * ...
-            (Y_test(:,1) - r(:,1) - (h{1} - h1));
-    end
-end
-
-fprintf('eps con CI esatte (deve essere [0;0] per ogni agente):\n');
-disp(eps_test)
 
 
 %% ============================================================
@@ -482,6 +578,74 @@ end
 % title('[Loop Shaping]  Formation error norms');
 % legend('Location','best');
 
+% Errore relativo agente 2 vs agente 1
+fe_rel_21 = squeeze(sqrt( ...
+    (Y(1,2,:) - Y(1,1,:) - (h{2}(1)-h1(1))).^2 + ...
+    (Y(2,2,:) - Y(2,1,:) - (h{2}(2)-h1(2))).^2 ));
+
+% Errore relativo agente 3 vs agente 1  
+fe_rel_31 = squeeze(sqrt( ...
+    (Y(1,3,:) - Y(1,1,:) - (h{3}(1)-h1(1))).^2 + ...
+    (Y(2,3,:) - Y(2,1,:) - (h{3}(2)-h1(2))).^2 ));
+
+figure('Name','Errore relativo');
+subplot(2,1,1); plot(t, fe_rel_21, 'b', 'LineWidth', 1.2);
+ylabel('||y_2 - y_1 - (h_2-h_1)||'); xlabel('t [s]'); grid on;
+title('Errore relativo agente 2 vs 1');
+
+subplot(2,1,2); plot(t, fe_rel_31, 'r', 'LineWidth', 1.2);
+ylabel('||y_3 - y_1 - (h_3-h_1)||'); xlabel('t [s]'); grid on;
+title('Errore relativo agente 3 vs 1');
+
+
+%% DIAGNOSI CONVERGENZA
+fprintf('\n=== DIAGNOSI ===\n');
+figure;
+% 1. Formation error a regime
+k_reg = round(0.8*Nt);
+fprintf('\n1. Formation error a regime:\n');
+for i = 1:3
+    fe = squeeze(sqrt(FE(1,i,:).^2 + FE(2,i,:).^2));
+    fprintf('   Agente %d: max=%.4f | rms=%.4f | finale=%.4f\n', ...
+        i, max(fe(k_reg:end)), rms(fe(k_reg:end)), fe(end));
+end
+
+% 2. Errore relativo (formazione)
+fprintf('\n2. Errore relativo a regime:\n');
+fe_rel_21 = squeeze(sqrt( ...
+    (Y(1,2,:)-Y(1,1,:)-(h{2}(1)-h1(1))).^2 + ...
+    (Y(2,2,:)-Y(2,1,:)-(h{2}(2)-h1(2))).^2 ));
+fe_rel_31 = squeeze(sqrt( ...
+    (Y(1,3,:)-Y(1,1,:)-(h{3}(1)-h1(1))).^2 + ...
+    (Y(2,3,:)-Y(2,1,:)-(h{3}(2)-h1(2))).^2 ));
+fprintf('   A2-A1: max=%.4f | finale=%.4f\n', ...
+    max(fe_rel_21(k_reg:end)), fe_rel_21(end));
+fprintf('   A3-A1: max=%.4f | finale=%.4f\n', ...
+    max(fe_rel_31(k_reg:end)), fe_rel_31(end));
+
+% 3. Tracking assoluto nodo 1
+fprintf('\n3. Tracking assoluto nodo 1:\n');
+track_1 = zeros(Nt,1);
+for k = 1:Nt
+    track_1(k) = sqrt((Y(1,1,k)-r(1,k))^2 + (Y(2,1,k)-r(2,k))^2);
+end
+fprintf('\n3. Tracking assoluto nodo 1:\n');
+fprintf('   max=%.4f | rms=%.4f | finale=%.4f\n', ...
+    max(track_1(k_reg:end)), rms(track_1(k_reg:end)), track_1(end));
+
+% 4. Velocita' degli agenti a regime (devono seguire rdot)
+fprintf('\n4. Velocita'' agente 1 a fine sim vs rdot atteso:\n');
+fprintf('   vx reale=%.4f | vx atteso=%.4f\n', X(2,1,end), rdot(1,end));
+fprintf('   vy reale=%.4f | vy atteso=%.4f\n', X(4,1,end), rdot(2,end));
+
+% 5. Virtual input a regime (non deve esplodere)
+fprintf('\n5. Virtual input a regime:\n');
+for i = 1:3
+    nu_norm = squeeze(sqrt(NU(1,i,:).^2 + NU(2,i,:).^2));
+    fprintf('   Agente %d: max=%.4f | finale=%.4f\n', ...
+        i, max(nu_norm(k_reg:end)), nu_norm(end));
+end
+
 
 %% Animazione formazione
 % Mostra i 3 agenti, il triangolo, e il reference r(t)
@@ -509,7 +673,7 @@ for k = 1:step_anim:Nt
     xlabel('x [m]'); ylabel('y [m]');
     title(sprintf('Formazione — t = %.2f s', t(k)));
 
-    % --- Traiettoria percorsa fino a k (scia) ---
+    %--- Traiettoria percorsa fino a k (scia) ---
     for i = 1:3
         plot(squeeze(Y(1,i,1:k)), squeeze(Y(2,i,1:k)), ...
              '--', 'Color', colors_ag{i}, ...
@@ -564,3 +728,5 @@ for k = 1:step_anim:Nt
 
     drawnow;
 end
+
+
