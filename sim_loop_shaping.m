@@ -164,7 +164,7 @@ end
 % S3 = 1 / (1 + L3c);
 
 % Verifica |S_i^pin(j*w0)| alla frequenza del riferimento
-w0 = om;  % 0.4 rad/s
+w0 = om;  
 fprintf('\n|S_pin_i(jw0)| alla frequenza del riferimento (w0=%.2f rad/s):\n', w0);
 for i = 1:3
     val = abs(evalfr(S_pin{i}, 1j*w0));
@@ -187,15 +187,6 @@ for i = 1:3
     fprintf('  rho_%d: |L_i(jw0)| = %.4f (%.2f dB)\n', ...
         i, L_at_w0, 20*log10(L_at_w0));
 end
-
-% Verifica attenuazione riferimento circolare senza feedforward
-% w0 = 0.;  % rad/s moto circolare
-% S1_at_w0 = abs(evalfr(S1, 1j*w0));
-% S2_at_w0 = abs(evalfr(S2, 1j*w0));
-% fprintf('|S1(jw0)| = %.4f (%.2f dB)\n', S1_at_w0, 20*log10(S1_at_w0));
-% fprintf('|S2(jw0)| = %.4f (%.2f dB)\n', S2_at_w0, 20*log10(S2_at_w0));
-
-
 
 %% --- Condizioni iniziali ---
 % Agenti partono con offset rispetto alla posizione desiderata

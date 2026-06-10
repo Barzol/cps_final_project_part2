@@ -15,7 +15,7 @@ P = 1/s^2;
 %% Autovalori della Laplaciana
 lambda1 = mu1;
 lambda2 = mu2;
-lambda3= mu3;
+lambda3=  mu3;
 % Il caso critico è rappresentato dall'autovalore più alto quindi lambda2
 
 L1 = lambda1 * P;
@@ -29,7 +29,7 @@ legend('\lambda=mu1','\lambda=mu2');
 title('Open-loop non compensato');
 
 %% Frequenza di crossover desiderata
-wc = 2.6; % rad/s %1.5
+wc = 3; % rad/s %1.5
 
 [mag1, ph1] = bode(L1, wc);
 [mag2, ph2] = bode(L2, wc);
@@ -39,7 +39,7 @@ ph2 = ph2(:);
 ph3 = ph3(:);
 
 %% Calcolo fase necessaria - DUE RETI ANTICIPATRICI
-PM_des = 65;
+PM_des = 75;
 PM_att = 180 + ph3; % caso peggiore lambda3=3, ph2=-180 -> PM_att=0
 phi_m_tot = PM_des - PM_att; % fase totale da aggiungere
 
@@ -86,7 +86,7 @@ L1_preLag = lambda1 * Kfin * P;
 
 % --- wc1_target scelto a 0.3 rad/s ---
 % la fase di rho1 li' vale -130 deg => PM = 50 deg, accettabile
-wc1_target = 0.8;%0.25
+wc1_target = 0.7;%0.25
 
 % --- beta: quanto guadagno serve per portare il crossover a wc1_target ---
 % vuoi |N_lag(j*wc1_target) * L1_preLag(j*wc1_target)| = 1
@@ -225,7 +225,7 @@ for i = 1:length(rho)
     
     % Sensitività a omega0
     Si = 1/(1 + Li);
-    w0 = 0.4;
+    w0 = 0.15;
     Si_at_w0 = abs(evalfr(Si, 1j*w0));
     
     % Risposta al gradino
