@@ -4,3 +4,6 @@
 /sintesi_controllore.m
 
 /provaControllore.m
+
+# MATLAB autosave files
+*.asv
